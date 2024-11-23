@@ -1,48 +1,40 @@
-DB_NAME=taskdb
-DB_USER=root
-DB_PASSWORD=toortoor
-DB_HOST=localhost
-DB_PORT=3306
+.PHONY: all setup_db start_mysql init_app run_app clean
 
-.PHONY: all setup clean
+DB_NAME=mydatabase
+DB_USER=user
+DB_PASS=user
+ROOT_PASS=root
 
-all: install-mariadb setup
+all: setup_db init_app run_app
 
-install-mariadb:
+# Update and install MariaDB server
+setup_db:
 	sudo apt update
-	sudo apt install -y mariadb-server mariadb-client
-	sudo systemctl enable mariadb
-	sudo systemctl start mariadb
-	sudo mysql_secure_installation
+	sudo apt install mariadb-server -y
+	sudo service mysql start
+	echo $(ROOT_PASS) | sudo mysql_secure_installation
 
-setup: create-db create-table insert-data
+	# MariaDB setup
+	echo "CREATE DATABASE $(DB_NAME);" | mariadb -uroot -p$(ROOT_PASS)
+	echo "CREATE USER '$(DB_USER)'@'localhost' IDENTIFIED BY '$(DB_PASS)';" | mariadb -uroot -p$(ROOT_PASS)
+	echo "GRANT ALL PRIVILEGES ON $(DB_NAME).* TO '$(DB_USER)'@'localhost';" | mariadb -uroot -p$(ROOT_PASS)
+	echo "FLUSH PRIVILEGES;" | mariadb -uroot -p$(ROOT_PASS)
 
-create-db:
-	mysql -u$(DB_USER) -p$(DB_PASSWORD) -h$(DB_HOST) -P$(DB_PORT) -e "CREATE DATABASE IF NOT EXISTS $(DB_NAME);"
+start_mysql:
+	sudo service mysql start
 
-create-table:
-	mysql -u$(DB_USER) -p$(DB_PASSWORD) -h$(DB_HOST) -P$(DB_PORT) $(DB_NAME) -e "\
-	CREATE TABLE IF NOT EXISTS tasks ( \
-		id INT AUTO_INCREMENT PRIMARY KEY, \
-		image VARCHAR(255), \
-		company VARCHAR(255), \
-		title VARCHAR(255), \
-		description TEXT, \
-		badgeType ENUM('Normal', 'Gold', 'Silver', 'Bronze') \
-	);"
+# Install Python dependencies and initialize database
+init_app:
+	pip install -r requirements.txt
+	python init_db.py
 
-insert-data:
-	mysql -u$(DB_USER) -p$(DB_PASSWORD) -h$(DB_HOST) -P$(DB_PORT) $(DB_NAME) -e "\
-	INSERT INTO tasks (image, company, title, description, badgeType) VALUES \
-	('https://via.placeholder.com/150', 'Company A', 'Task A', 'Task A Description', 'Normal'), \
-	('https://via.placeholder.com/150', 'Company B', 'Task B', 'Task B Description', 'Gold'), \
-	('https://via.placeholder.com/150', 'Company C', 'Task C', 'Task C Description', 'Silver'), \
-	('https://via.placeholder.com/150', 'Company D', 'Task D', 'Task D Description', 'Bronze'), \
-	('https://via.placeholder.com/150', 'Company E', 'Task E', 'Task E Description', 'Gold'), \
-	('https://via.placeholder.com/150', 'Company F', 'Task F', 'Task F Description', 'Silver'), \
-	('https://via.placeholder.com/150', 'Company G', 'Task G', 'Task G Description', 'Normal'), \
-	('https://via.placeholder.com/150', 'Company H', 'Task H', 'Task H Description', 'Bronze'), \
-	('https://via.placeholder.com/150', 'Company I', 'Task I', 'Task I Description', 'Gold'), \
-	('https://via.placeholder.com/150', 'Company J', 'Task J', 'Task J Description', 'Silver');"
+# Run the application
+run_app:
+	uvicorn main:app --host 0.0.0.0 --port 8000
 
-# 실행 방법 : make all
+# Clean up MariaDB server (optional)
+clean:
+	sudo service mysql stop
+	sudo apt remove mariadb-server -y
+	sudo apt autoremove -y
+	rm -rf /var/lib/mysql
